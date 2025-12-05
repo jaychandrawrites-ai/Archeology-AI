@@ -1,0 +1,7 @@
+Flask
+gunicorn
+numpy
+pandas
+opencv-python-headless
+scikit-learn
+werkzeug

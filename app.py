@@ -23,15 +23,57 @@ logging.basicConfig(level=logging.INFO)
 
 
 # ----------------------------------
-# Load Model + CSV WITH SAFE UNZIP
+# Load Model + CSV WITH SAFE UNZIP OF CSV ZIP
 # ----------------------------------
 import zipfile
 
 MODEL_PATH = "model.pkl"
 CSV_PATH = "open-context-12473-records.csv"
-ZIP_PATH = "database.zip"
+CSV_ZIP_PATH = "open-context-12473-records.zip"
 
-# ---- Load Model (NOT zipped) ----
+# ---- Safe unzip function for CSV only ----
+def safe_unzip_csv(zip_path, target_csv):
+    """
+    Extract ONLY the CSV from its ZIP safely.
+    Does NOT unzip anything else.
+    """
+    if not os.path.exists(zip_path):
+        logging.warning("CSV ZIP not found. Using existing CSV if present.")
+        return
+
+    logging.info(f"Found CSV ZIP: {zip_path}")
+
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            # Only extract the CSV file
+            for member in z.namelist():
+                filename = os.path.basename(member)
+                if filename != target_csv:
+                    logging.info(f"Skipping non-target file inside ZIP: {filename}")
+                    continue
+
+                if os.path.exists(target_csv):
+                    logging.info(f"{target_csv} already exists — skipping unzip.")
+                    continue
+
+                with z.open(member) as src, open(target_csv, "wb") as dst:
+                    dst.write(src.read())
+
+                logging.info(f"Extracted {target_csv} from ZIP.")
+
+    except Exception as e:
+        raise RuntimeError(f"❌ Error during CSV unzip: {e}")
+
+
+# ---- Extract CSV if missing ----
+if not os.path.exists(CSV_PATH):
+    logging.info(f"{CSV_PATH} not found → extracting from ZIP...")
+    safe_unzip_csv(CSV_ZIP_PATH, CSV_PATH)
+else:
+    logging.info("CSV already exists — skipping unzip.")
+
+
+# ---- Load Model (untouched) ----
 try:
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
@@ -40,47 +82,13 @@ except Exception as e:
     raise RuntimeError(f"❌ Failed to load model.pkl: {e}")
 
 
-# ---- Safe unzip function ----
-def safe_unzip_csv(zip_path, target_csv):
-    """
-    Extract ONLY 'open-context-12473-records.csv' safely.
-    Prevents extraction of other files or malicious paths.
-    """
-    if not os.path.exists(zip_path):
-        logging.warning("No ZIP found. Using existing CSV if present.")
-        return
-
-    logging.info(f"ZIP found: {zip_path}")
-
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            # Make sure the expected CSV exists inside
-            names = z.namelist()
-            if target_csv not in [os.path.basename(n) for n in names]:
-                raise RuntimeError(f"CSV '{target_csv}' not found inside ZIP.")
-
-            for member in names:
-                filename = os.path.basename(member)
-
-                # skip folders
-                if not filename:
-                    continue
-
-                # ONLY allow extraction of the target CSV
-                if filename != target_csv:
-                    logging.warning(f"Skipping unexpected file: {filename}")
-                    continue
-
-                # secure path
-                target_path = os.path.abspath(target_csv)
-                with z.open(member) as src, open(target_path, "wb") as dst:
-                    dst.write(src.read())
-
-                logging.info(f"Extracted CSV: {target_path}")
-
-    except Exception as e:
-        raise RuntimeError(f"❌ Error during CSV unzip: {e}")
-
+# ---- Load CSV ----
+try:
+    df = pd.read_csv(CSV_PATH)
+    records = df.set_index(df.columns[0]).to_dict(orient="index")
+    logging.info("CSV loaded successfully.")
+except Exception as e:
+    raise RuntimeError(f"❌ Failed to load CSV: {e}")
 
 # ---- Extract CSV if missing ----
 if not os.path.exists(CSV_PATH):

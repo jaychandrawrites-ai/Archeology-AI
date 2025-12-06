@@ -86,6 +86,10 @@ MODEL_PATH = "model.pkl"
 CSV_PATH = "open-context-12473-records.csv"
 
 # Load model
+MODEL_PATH = "model.pkl"
+CSV_PATH = "open-context-12473-records.csv"
+
+# Load model
 try:
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
@@ -93,14 +97,13 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Failed to load model.pkl: {e}")
 
-# Load CSV into dictionary (optional: adjust to your structure)
+# Load CSV to dictionary (adjust if needed)
 try:
     df = pd.read_csv(CSV_PATH)
-    # Convert CSV rows into lookup dictionary using first column as key
     records = df.set_index(df.columns[0]).to_dict(orient="index")
-    logging.info("CSV records loaded successfully.")
+    logging.info("CSV loaded successfully.")
 except Exception as e:
-    raise RuntimeError(f"❌ Failed to load CSV file: {e}")
+    raise RuntimeError(f"❌ Failed to load CSV: {e}")
     
 # ------------------ Helper Functions ------------------
 def allowed_file(filename):

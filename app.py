@@ -82,29 +82,26 @@ def unzip_database(zip_path="database.zip", extract_to="."):
 
     logging.info(f"Found {zip_path}. Extracting...")
 
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            allowed_files = {"model.pkl", "open-context-12473-records.csv"}
+MODEL_PATH = "model.pkl"
+CSV_PATH = "open-context-12473-records.csv"
 
-            for member in z.namelist():
-                filename = os.path.basename(member)
+# Load model
+try:
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+    logging.info("Model loaded successfully.")
+except Exception as e:
+    raise RuntimeError(f"❌ Failed to load model.pkl: {e}")
 
-                # Skip directories and unknown files
-                if not filename or filename not in allowed_files:
-                    logging.warning(f"Skipping unexpected file in zip: {member}")
-                    continue
-
-                # Extract safely
-                target_path = os.path.join(extract_to, filename)
-                logging.info(f"Extracting {filename} -> {target_path}")
-                with z.open(member) as src, open(target_path, "wb") as dst:
-                    dst.write(src.read())
-
-        logging.info("Unzip completed successfully.")
-
-    except Exception as e:
-        raise RuntimeError(f"❌ Failed to unzip database: {e}")
-
+# Load CSV into dictionary (optional: adjust to your structure)
+try:
+    df = pd.read_csv(CSV_PATH)
+    # Convert CSV rows into lookup dictionary using first column as key
+    records = df.set_index(df.columns[0]).to_dict(orient="index")
+    logging.info("CSV records loaded successfully.")
+except Exception as e:
+    raise RuntimeError(f"❌ Failed to load CSV file: {e}")
+    
 # ------------------ Helper Functions ------------------
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

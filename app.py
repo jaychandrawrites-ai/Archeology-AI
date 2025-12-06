@@ -8,7 +8,9 @@ from werkzeug.utils import secure_filename
 import uuid
 import logging
 
-# ------------------ Configuration ------------------
+# ----------------------------------
+# App Configuration
+# ----------------------------------
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -19,77 +21,13 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 
-# ------------------ HTML TEMPLATE (Embedded) ------------------
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Image Classifier App</title>
-    <style>
-        body { font-family: Arial; background: #f2f2f2; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0; }
-        .container { background: #fff; padding:30px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.2); text-align:center; width:420px; }
-        input[type="file"] { margin:15px 0; }
-        button { padding:10px 20px; border:none; background:#007bff; color:white; border-radius:5px; cursor:pointer; }
-        button:hover { background:#0056b3; }
-        ul { text-align:left; margin-top:20px; }
-        .flash { color:red; margin-bottom:10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Image Classification App</h1>
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <div class="flash">
-                    {% for msg in messages %}
-                        <p>{{ msg }}</p>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-
-        <form action="/upload" method="POST" enctype="multipart/form-data">
-            <input type="file" name="image" accept="image/*" required>
-            <button type="submit">Classify Image</button>
-        </form>
-
-        {% if result %}
-            <h2>Classification Result:</h2>
-            <ul>
-                {% for key, value in result.items() %}
-                    <li><strong>{{ key }}:</strong> {{ value }}</li>
-                {% endfor %}
-            </ul>
-        {% endif %}
-    </div>
-</body>
-</html>
-"""
-
-# ------------------ Load Model and CSV ------------------
-import zipfile
-
-def unzip_database(zip_path="database.zip", extract_to="."):
-    """
-    Safely unzip the model/database if a zip file exists.
-    Only extracts expected files.
-    """
-    if not os.path.exists(zip_path):
-        logging.info("No ZIP database found — skipping unzip.")
-        return
-
-    logging.info(f"Found {zip_path}. Extracting...")
-
+# ----------------------------------
+# Load Model + CSV (NO ZIP)
+# ----------------------------------
 MODEL_PATH = "model.pkl"
 CSV_PATH = "open-context-12473-records.csv"
 
-# Load model
-MODEL_PATH = "model.pkl"
-CSV_PATH = "open-context-12473-records.csv"
-
-# Load model
 try:
     with open(MODEL_PATH, "rb") as f:
         model = pickle.load(f)
@@ -97,64 +35,190 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Failed to load model.pkl: {e}")
 
-# Load CSV to dictionary (adjust if needed)
 try:
     df = pd.read_csv(CSV_PATH)
     records = df.set_index(df.columns[0]).to_dict(orient="index")
     logging.info("CSV loaded successfully.")
 except Exception as e:
     raise RuntimeError(f"❌ Failed to load CSV: {e}")
-    
-# ------------------ Helper Functions ------------------
+
+
+# ----------------------------------
+# Utility Functions
+# ----------------------------------
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def process_image(file_path):
-    """
-    Process image: grayscale → dilation → FFT LP filter →
-    inverse FFT → resize to 23×23 → normalize → flatten.
-    """
+    """Full preprocessing pipeline identical to your original."""
     img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise ValueError("Invalid or corrupted image")
 
-    # Dilation
     kernel = np.ones((3, 3), np.uint8)
     dilated = cv2.dilate(img, kernel, iterations=1)
 
-    # FFT
     f = np.fft.fft2(dilated)
     fshift = np.fft.fftshift(f)
 
     rows, cols = fshift.shape
     crow, ccol = rows // 2, cols // 2
 
-    # Low-pass filter mask
     mask = np.zeros((rows, cols), np.uint8)
-    r = 30  # radius
+    r = 30
     x, y = np.ogrid[:rows, :cols]
     mask_area = (x - crow)**2 + (y - ccol)**2 <= r*r
     mask[mask_area] = 1
 
     fshift *= mask
-
-    # Inverse FFT
     f_ishift = np.fft.ifftshift(fshift)
     img_back = np.abs(np.fft.ifft2(f_ishift))
 
-    # 🔥 Resize to 23×23
     img_resized = cv2.resize(img_back, (23, 23))
-
-    # Normalize + flatten
     img_norm = img_resized / 255.0
     return img_norm.reshape(1, -1)
 
 
-# ------------------ Routes ------------------
-@app.route('/', methods=['GET'])
+# ----------------------------------
+# HTML Template (Modern Redesign)
+# ----------------------------------
+HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Image Classifier</title>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', sans-serif;
+        background: linear-gradient(135deg, #4b79a1, #283e51);
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .card {
+        width: 450px;
+        background: rgba(255, 255, 255, 0.15);
+        padding: 30px;
+        border-radius: 16px;
+        backdrop-filter: blur(15px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        color: white;
+        text-align: center;
+        animation: fadeIn 0.7s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+        font-weight: 300;
+        margin-bottom: 20px;
+        letter-spacing: 1px;
+    }
+
+    input[type="file"] {
+        padding: 12px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.3);
+        color: white;
+        width: 100%;
+        margin-top: 10px;
+    }
+
+    button {
+        margin-top: 20px;
+        padding: 12px 20px;
+        border: none;
+        background: #00d4ff;
+        color: #00344d;
+        font-weight: bold;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: 0.2s;
+        width: 100%;
+        font-size: 16px;
+    }
+
+    button:hover {
+        background: #00a8cc;
+    }
+
+    .result-box {
+        background: rgba(255,255,255,0.2);
+        padding: 15px;
+        border-radius: 10px;
+        text-align: left;
+        margin-top: 20px;
+    }
+
+    .flash {
+        color: #ffbbbb;
+        margin-bottom: 10px;
+    }
+
+    .credits {
+        margin-top: 20px;
+        font-size: 14px;
+        opacity: 0.8;
+    }
+</style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Image Classification</h1>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <div class="flash">
+                {% for msg in messages %}
+                    <p>{{ msg }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required>
+        <button type="submit">Classify Image</button>
+    </form>
+
+    {% if result %}
+    <div class="result-box">
+        <h2>Result:</h2>
+        <ul>
+            {% for key, value in result.items() %}
+            <li><strong>{{ key }}:</strong> {{ value }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="credits">
+        Created with ❤️ by <strong>Jay Chandra</strong> & <strong>Ishan Nathan</strong>
+    </div>
+</div>
+
+</body>
+</html>
+"""
+
+
+# ----------------------------------
+# Routes
+# ----------------------------------
+@app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template_string(HTML)
 
 
 @app.route('/upload', methods=['POST'])
@@ -164,12 +228,13 @@ def upload_file():
         return redirect('/')
 
     file = request.files['image']
+
     if file.filename == "":
         flash("No file selected.")
         return redirect('/')
 
     if not allowed_file(file.filename):
-        flash("Invalid file format. Use PNG/JPG/JPEG.")
+        flash("Invalid format. Use PNG/JPG/JPEG.")
         return redirect('/')
 
     filename = secure_filename(file.filename)
@@ -180,21 +245,21 @@ def upload_file():
     try:
         img_input = process_image(filepath)
     except Exception as e:
-        flash(f"Image processing error: {e}")
+        flash(f"Image processing failed: {e}")
         return redirect('/')
 
     try:
         prediction = model.predict(img_input)[0]
     except Exception as e:
-        flash(f"Model prediction error: {e}")
+        flash(f"Model prediction failed: {e}")
         return redirect('/')
 
     result_info = records.get(prediction, {"predicted_class": prediction})
+    return render_template_string(HTML, result=result_info)
 
-    return render_template_string(HTML_TEMPLATE, result=result_info)
 
-
-# ------------------ Run App ------------------
+# ----------------------------------
+# Run App
+# ----------------------------------
 if __name__ == '__main__':
     app.run(debug=True)
-    
